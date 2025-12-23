@@ -1,0 +1,117 @@
+openapi: 3.0.0
+info:
+  title: FCS Export Tool API
+  version: 1.0.0
+paths:
+  /api/parse:
+    post:
+      summary: Upload and parse FCS files
+      operationId: parseFCS
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                files:
+                  type: array
+                  items:
+                    type: string
+                    format: binary
+      responses:
+        '200':
+          description: Successful parsing
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/FCSMetadata'
+
+  /api/export/png:
+    post:
+      summary: Generate PNG for a single file data
+      operationId: exportPNG
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FCSMetadata'
+      responses:
+        '200':
+          description: PNG image
+          content:
+            image/png:
+              schema:
+                type: string
+                format: binary
+
+  /api/export/zip:
+    post:
+      summary: Generate ZIP containing PNGs for multiple files
+      operationId: exportZIP
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                  $ref: '#/components/schemas/FCSMetadata'
+      responses:
+        '200':
+          description: ZIP archive
+          content:
+            application/zip:
+              schema:
+                type: string
+                format: binary
+
+components:
+  schemas:
+    FCSMetadata:
+      type: object
+      properties:
+        filename:
+          type: string
+        timestamp:
+          type: string
+        instrument:
+          $ref: '#/components/schemas/InstrumentInfo'
+        channels:
+          type: array
+          items:
+            $ref: '#/components/schemas/ChannelInfo'
+        compensation:
+          $ref: '#/components/schemas/CompensationMatrix'
+    
+    InstrumentInfo:
+      type: object
+      properties:
+        model:
+          type: string
+        serial_number:
+          type: string
+        name:
+          type: string
+
+    ChannelInfo:
+      type: object
+      properties:
+        name:
+          type: string
+        voltage:
+          type: number
+    
+    CompensationMatrix:
+      type: object
+      properties:
+        fluorochromes:
+          type: array
+          items:
+            type: string
+        values:
+          type: array
+          items:
+            type: array
+            items:
+              type: number
