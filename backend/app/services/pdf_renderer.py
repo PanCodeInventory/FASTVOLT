@@ -5,12 +5,16 @@ from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import cm
 from reportlab.lib.enums import TA_CENTER, TA_LEFT
 import io
+import logging
 from datetime import datetime
 from ..models import FCSMetadata
 
+logger = logging.getLogger(__name__)
+
 def generate_pdf_report(metadata: FCSMetadata) -> bytes:
     """
-    Generates a professional A4 PDF lab record for FCS data, scaled to fit on ONE page.
+    Generates a professional A4 PDF lab record for FCS data, scaled to fit on ONE page,
+    or intelligently splits to two pages if content is too large.
     """
     buffer = io.BytesIO()
     
@@ -23,6 +27,9 @@ def generate_pdf_report(metadata: FCSMetadata) -> bytes:
         topMargin=1.0*cm,
         bottomMargin=1.0*cm
     )
+    
+    # Calculate available printable height
+    printable_height = A4[1] - (doc.topMargin + doc.bottomMargin)
     
     elements = []
     styles = getSampleStyleSheet()
@@ -40,17 +47,16 @@ def generate_pdf_report(metadata: FCSMetadata) -> bytes:
     # If we have a lot of data, shrink everything
     total_rows = n_channels + n_comp + 10 # 10 is buffer for headers/info
     
-    if total_rows > 60:
-        scale_factor = 0.6
-    elif total_rows > 45:
-        scale_factor = 0.75
-    elif total_rows > 30:
+    # Relaxed scaling logic (T005) - rely on page break for very large datasets
+    if total_rows > 50:
         scale_factor = 0.85
+    elif total_rows > 35:
+        scale_factor = 0.92
     else:
         scale_factor = 1.0
         
-    font_size = max(6, int(base_font_size * scale_factor))
-    row_h = max(0.35*cm, base_row_h * scale_factor)
+    font_size = max(8, int(base_font_size * scale_factor)) # Minimum 8pt
+    row_h = max(0.45*cm, base_row_h * scale_factor)
     
     # Custom Styles
     title_style = ParagraphStyle(
@@ -77,8 +83,10 @@ def generate_pdf_report(metadata: FCSMetadata) -> bytes:
         textColor=colors.HexColor('#4a86e8')
     )
 
-    # 2. Header: Institution Name
-    elements.append(Paragraph("Institute of Immunology, USTC, Flow Cytometry Form", title_style))
+    # --- Create Flowables (but don't add to elements yet) ---
+    
+    # 2. Header
+    header_para = Paragraph("Institute of Immunology, USTC, Flow Cytometry Form", title_style)
     
     # 3. Experiment Information
     exp_info_data = [
@@ -90,12 +98,11 @@ def generate_pdf_report(metadata: FCSMetadata) -> bytes:
         ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
         ('LEFTPADDING', (0,0), (-1,-1), 0),
     ]))
-    elements.append(exp_table)
-    elements.append(Spacer(1, 5))
+    exp_spacer = Spacer(1, 5)
 
     # 4. FCS Metadata
     inst = metadata.instrument
-    # Extract only the date part from timestamp (e.g. "19-Dec-2024 18:49:34" -> "19-Dec-2024")
+    # Extract only the date part from timestamp
     test_date = metadata.timestamp.split(' ')[0] if metadata.timestamp else "N/A"
     
     meta_data = [
@@ -114,10 +121,9 @@ def generate_pdf_report(metadata: FCSMetadata) -> bytes:
         ('BOTTOMPADDING', (0,0), (-1,-1), 2),
         ('TOPPADDING', (0,0), (-1,-1), 2),
     ]))
-    elements.append(meta_table)
 
     # 5. Voltage Table
-    elements.append(Paragraph("Channel Voltages", section_title_style))
+    voltage_title = Paragraph("Channel Voltages", section_title_style)
     
     vol_header = ["Channel", "Label", "Voltage"]
     vol_rows = [vol_header]
@@ -135,11 +141,26 @@ def generate_pdf_report(metadata: FCSMetadata) -> bytes:
         ('ROWBACKGROUNDS', (0,1), (-1,-1), [colors.white, colors.whitesmoke]),
         ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
     ]))
-    elements.append(vol_table)
+
+    # --- Calculate Height of Content Above Matrix ---
+    # We need to wrap them to know their height.
+    # width is doc.width (which is pagesize - margins)
+    avail_width = doc.width
+    avail_height = doc.height # This is technically printable height too
+    
+    current_height = 0
+    pre_matrix_elements = [header_para, exp_table, exp_spacer, meta_table, voltage_title, vol_table]
+    
+    for elem in pre_matrix_elements:
+        w, h = elem.wrap(avail_width, avail_height)
+        current_height += h
+        
+    # Add pre-matrix elements to story
+    elements.extend(pre_matrix_elements)
 
     # 6. Compensation Matrix
     if has_comp:
-        elements.append(Paragraph("Compensation Matrix (%)", section_title_style))
+        comp_title = Paragraph("Compensation Matrix (%)", section_title_style)
         
         comp = metadata.compensation
         row_labels = comp.fluorochromes
@@ -166,7 +187,24 @@ def generate_pdf_report(metadata: FCSMetadata) -> bytes:
             ('GRID', (0,0), (-1,-1), 0.5, colors.lightgrey),
             ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
         ]))
-        elements.append(comp_table)
+        
+        # Calculate Matrix Height
+        w_title, h_title = comp_title.wrap(avail_width, avail_height)
+        w_table, h_table = comp_table.wrap(avail_width, avail_height)
+        matrix_total_height = h_title + h_table
+        
+        # Conditional Logic (T006 & T008)
+        if (current_height + matrix_total_height) > printable_height:
+             # Page Split Triggered (T008)
+             logger.info(f"Report content height ({current_height:.2f} + {matrix_total_height:.2f}) exceeds single A4 page ({printable_height:.2f}). Triggering page break for Compensation Matrix.")
+             elements.append(PageBreak())
+             elements.append(comp_title)
+             elements.append(comp_table)
+        else:
+             # Fits on Page 1 (T006)
+             logger.info(f"Report content fits on single A4 page. Height: {current_height + matrix_total_height:.2f} / {printable_height:.2f}")
+             elements.append(comp_title)
+             elements.append(comp_table)
 
     # 7. Footer
     elements.append(Spacer(1, 10))

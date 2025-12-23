@@ -28,9 +28,9 @@ tests/
 : Follow standard conventions
 
 ## Recent Changes
+- 001-export-pagination: Added [if applicable, e.g., PostgreSQL, CoreData, files or N/A]
 - 002-enhanced-export: Added Python 3.10+, HTML/JS + ReportLab, FastAPI, flowio
 - 002-enhanced-export: Added [if applicable, e.g., PostgreSQL, CoreData, files or N/A]
-- 001-fcs-export-tool: Added Python 3.10+ (Backend), HTML/JS (Frontend) + FastAPI (Web), flowio (Parsing), matplotlib (Rendering), uvicorn (Server)
 
 
 <!-- MANUAL ADDITIONS START -->
