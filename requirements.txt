@@ -1,0 +1,9 @@
+fastapi
+uvicorn
+python-multipart
+flowio
+matplotlib
+pandas
+pytest
+httpx
+reportlab

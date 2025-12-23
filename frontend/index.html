@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FCS Export Tool</title>
+    <!-- Vue 3 CDN -->
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="assets/style.css">
+</head>
+<body class="bg-gray-100 min-h-screen p-8">
+    <div id="app" class="max-w-6xl mx-auto bg-white rounded-lg shadow-md p-6">
+        <header class="mb-8 border-b pb-4 flex justify-between items-center">
+            <div>
+                <h1 class="text-3xl font-bold text-gray-800">FCS Data Export Tool</h1>
+                <p class="text-gray-600 mt-2">Upload FCS files to extract Voltage and Compensation data</p>
+            </div>
+            <div class="flex items-center gap-4">
+                <button v-if="files.length > 0" @click="exportBatch" class="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded shadow transition-colors font-semibold">
+                    Export All (PDF ZIP)
+                </button>
+                <div v-if="loading" class="text-blue-600 font-semibold animate-pulse">
+                    Processing...
+                </div>
+            </div>
+        </header>
+
+        <main>
+            <!-- File Upload Zone -->
+            <div 
+                v-if="files.length === 0"
+                class="border-4 border-dashed border-gray-300 rounded-xl p-16 text-center hover:border-blue-500 hover:bg-blue-50 transition-all cursor-pointer mb-8"
+                @dragover.prevent
+                @drop.prevent="handleDrop"
+                @click="triggerFileInput"
+            >
+                <input 
+                    type="file" 
+                    ref="fileInput" 
+                    class="hidden" 
+                    multiple 
+                    accept=".fcs"
+                    @change="handleFileSelect"
+                >
+                <div class="text-gray-500">
+                    <svg class="w-16 h-16 mx-auto mb-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path></svg>
+                    <p class="text-2xl font-semibold mb-2">Drag & Drop FCS files</p>
+                    <p class="text-sm">or click to browse</p>
+                </div>
+            </div>
+            
+            <!-- Upload More Button -->
+            <div v-else class="mb-6 flex justify-end">
+                <button @click="triggerFileInput" class="bg-gray-200 hover:bg-gray-300 text-gray-700 px-4 py-2 rounded shadow flex items-center gap-2">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
+                    Load More Files
+                </button>
+                <input type="file" ref="fileInput" class="hidden" multiple accept=".fcs" @change="handleFileSelect">
+            </div>
+
+            <!-- Error Display -->
+            <div v-if="errorMsg" class="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative mb-4" role="alert">
+                <strong class="font-bold">Error: </strong>
+                <span class="block sm:inline">{{ errorMsg }}</span>
+            </div>
+
+            <!-- Results Section -->
+            <div v-if="files.length > 0" class="space-y-8">
+                <div v-for="(file, index) in files" :key="index" class="border rounded-lg p-6 bg-gray-50 shadow-sm">
+                    <div class="flex justify-between items-start mb-4 border-b pb-2">
+                        <div>
+                            <h2 class="text-xl font-bold text-gray-800">{{ file.filename }}</h2>
+                            <div class="text-sm text-gray-500 mt-1 space-y-1">
+                                <p v-if="file.timestamp">Date: {{ file.timestamp.split(' ')[0] }}</p>
+                                <p v-if="file.instrument" class="flex gap-4">
+                                    <span v-if="file.instrument.model">Model: <span class="font-medium text-gray-700">{{ file.instrument.model }}</span></span>
+                                    <span v-if="file.instrument.serial_number">SN: <span class="font-medium text-gray-700">{{ file.instrument.serial_number }}</span></span>
+                                </p>
+                            </div>
+                        </div>
+                        <div v-if="file.error" class="text-red-500 font-bold bg-red-100 px-2 py-1 rounded">
+                            Failed: {{ file.error }}
+                        </div>
+                        <div v-else class="flex gap-2">
+                            <button @click="exportPDF(file)" class="bg-red-600 hover:bg-red-700 text-white px-3 py-1 rounded text-sm shadow transition-colors flex items-center gap-1">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"></path></svg>
+                                Export PDF
+                            </button>
+                        </div>
+                    </div>
+
+                    <div v-if="!file.error" class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                        <!-- Voltage Table -->
+                        <div>
+                            <h3 class="text-lg font-semibold mb-2 text-gray-700">Channels & Voltages</h3>
+                            <div class="overflow-x-auto bg-white rounded shadow">
+                                <table class="min-w-full text-sm">
+                                    <thead class="bg-gray-100">
+                                        <tr>
+                                            <th class="px-4 py-2 text-left text-gray-600 font-medium">Channel</th>
+                                            <th class="px-4 py-2 text-left text-gray-600 font-medium">Label</th>
+                                            <th class="px-4 py-2 text-right text-gray-600 font-medium">Voltage</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody class="divide-y divide-gray-200">
+                                        <tr v-for="ch in file.channels" :key="ch.name">
+                                            <td class="px-4 py-2 font-mono text-gray-800">{{ ch.name }}</td>
+                                            <td class="px-4 py-2 text-gray-600">{{ ch.label || '-' }}</td>
+                                            <td class="px-4 py-2 text-right font-mono text-blue-600">{{ ch.voltage }}</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+
+                        <!-- Compensation Matrix -->
+                        <div v-if="file.compensation">
+                            <h3 class="text-lg font-semibold mb-2 text-gray-700">Compensation Matrix</h3>
+                            <div class="overflow-x-auto bg-white rounded shadow">
+                                <table class="min-w-full text-xs">
+                                    <thead class="bg-gray-100">
+                                        <tr>
+                                            <th class="px-2 py-2 text-left text-gray-600">Fluor</th>
+                                            <th v-for="col in file.compensation.fluorochromes" :key="'h-'+col" class="px-2 py-2 text-center text-gray-600">
+                                                {{ col }}
+                                            </th>
+                                        </tr>
+                                    </thead>
+                                    <tbody class="divide-y divide-gray-200">
+                                        <tr v-for="(row, rIndex) in file.compensation.values" :key="rIndex">
+                                            <td class="px-2 py-2 font-medium bg-gray-50">{{ file.compensation.fluorochromes[rIndex] }}</td>
+                                            <td v-for="(val, cIndex) in row" :key="cIndex" class="px-2 py-2 text-center" :class="{'text-gray-300': val === 0, 'font-bold text-gray-800': val > 0}">
+                                                {{ (val * 100).toFixed(2) }}%
+                                            </td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                        <div v-else class="bg-yellow-50 p-4 rounded text-yellow-700 border border-yellow-200 h-full flex items-center justify-center">
+                            No Compensation Matrix Found
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script>
+        const { createApp, ref } = Vue
+
+        createApp({
+            setup() {
+                const files = ref([]) // Stores processed FCSMetadata
+                const fileInput = ref(null)
+                const loading = ref(false)
+                const errorMsg = ref(null)
+
+                const uploadFiles = async (fileList) => {
+                    if (fileList.length === 0) return
+                    
+                    loading.value = true
+                    errorMsg.value = null
+                    
+                    const formData = new FormData()
+                    for (let i = 0; i < fileList.length; i++) {
+                        formData.append('files', fileList[i])
+                    }
+
+                    try {
+                        const response = await fetch('http://127.0.0.1:8000/api/parse', {
+                            method: 'POST',
+                            body: formData
+                        })
+
+                        if (!response.ok) {
+                            throw new Error(`Server Error: ${response.statusText}`)
+                        }
+
+                        const data = await response.json()
+                        // Append new results
+                        files.value.push(...data)
+                    } catch (e) {
+                        console.error(e)
+                        errorMsg.value = "Failed to upload/parse files. Ensure backend is running."
+                    } finally {
+                        loading.value = false
+                    }
+                }
+
+                const handleFileSelect = (event) => {
+                    const newFiles = Array.from(event.target.files)
+                    uploadFiles(newFiles)
+                    // Reset input so same file can be selected again if needed
+                    event.target.value = ''
+                }
+
+                const handleDrop = (event) => {
+                    const newFiles = Array.from(event.dataTransfer.files).filter(f => f.name.toLowerCase().endsWith('.fcs'))
+                    if (newFiles.length > 0) {
+                        uploadFiles(newFiles)
+                    }
+                }
+
+                const triggerFileInput = () => {
+                    fileInput.value.click()
+                }
+
+                const exportPDF = async (fileMetadata) => {
+                    try {
+                        const response = await fetch('http://127.0.0.1:8000/api/export/pdf', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json'
+                            },
+                            body: JSON.stringify(fileMetadata)
+                        })
+
+                        if (!response.ok) throw new Error("Export failed")
+
+                        const blob = await response.blob()
+                        const url = window.URL.createObjectURL(blob)
+                        const a = document.createElement('a')
+                        a.href = url
+                        a.download = `${fileMetadata.filename.replace('.fcs', '').replace('.FCS', '')}_report.pdf`
+                        document.body.appendChild(a)
+                        a.click()
+                        window.URL.revokeObjectURL(url)
+                        document.body.removeChild(a)
+                    } catch (e) {
+                        console.error(e)
+                        alert("Failed to export PDF")
+                    }
+                }
+
+                const exportBatch = async () => {
+                    if (files.value.length === 0) return
+                    loading.value = true
+                    try {
+                        const response = await fetch('http://127.0.0.1:8000/api/export/pdf/zip', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json'
+                            },
+                            body: JSON.stringify(files.value)
+                        })
+
+                        if (!response.ok) throw new Error("Batch Export failed")
+
+                        const blob = await response.blob()
+                        const url = window.URL.createObjectURL(blob)
+                        const a = document.createElement('a')
+                        a.href = url
+                        const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)
+                        a.download = `FCS_Reports_Batch_${timestamp}.zip`
+                        document.body.appendChild(a)
+                        a.click()
+                        window.URL.revokeObjectURL(url)
+                        document.body.removeChild(a)
+                    } catch (e) {
+                        console.error(e)
+                        alert("Failed to export batch PDF ZIP")
+                    } finally {
+                        loading.value = false
+                    }
+                }
+
+                return {
+                    files,
+                    fileInput,
+                    loading,
+                    errorMsg,
+                    handleFileSelect,
+                    handleDrop,
+                    triggerFileInput,
+                    exportPDF,
+                    exportBatch
+                }
+            }
+        }).mount('#app')
+    </script>
+</body>
+</html>

@@ -1,0 +1,69 @@
+openapi: 3.0.0
+info:
+  title: Enhanced FCS Export API
+  version: 1.0.0
+paths:
+  /api/export/pdf:
+    post:
+      summary: Generate A4 Lab Report PDF
+      operationId: exportPDF
+      requestBody:
+        content:
+          application/json:
+            schema:
+              # Re-using the FCSMetadata schema from feature 001
+              $ref: '#/components/schemas/FCSMetadata'
+      responses:
+        '200':
+          description: PDF document
+          content:
+            application/pdf:
+              schema:
+                type: string
+                format: binary
+
+  /api/export/pdf/zip:
+    post:
+      summary: Generate ZIP containing multiple A4 PDFs
+      operationId: exportPDFZip
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                $ref: '#/components/schemas/FCSMetadata'
+      responses:
+        '200':
+          description: ZIP archive
+          content:
+            application/zip:
+              schema:
+                type: string
+                format: binary
+
+components:
+  schemas:
+    # Included for completeness, though it matches feature 001
+    FCSMetadata:
+      type: object
+      properties:
+        filename:
+          type: string
+        timestamp:
+          type: string
+        instrument:
+          type: object
+          properties:
+            model:
+              type: string
+            name:
+              type: string
+            serial_number:
+              type: string
+        channels:
+          type: array
+          items:
+            type: object
+        compensation:
+          type: object
