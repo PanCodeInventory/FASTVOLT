@@ -1,3 +1,15 @@
+import hashlib
+import sys
+
+# Compatibility patch for ReportLab on various Python versions/environments
+# Some versions of ReportLab 4.x use 'usedforsecurity=False' which is not supported
+# in Python < 3.9 or certain OpenSSL builds.
+_original_md5 = hashlib.md5
+def _patched_md5(*args, **kwargs):
+    kwargs.pop('usedforsecurity', None)
+    return _original_md5(*args, **kwargs)
+hashlib.md5 = _patched_md5
+
 from fastapi import FastAPI, UploadFile, File, HTTPException, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
