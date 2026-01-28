@@ -36,13 +36,51 @@ Run the application using the following command:
 python main.py
 ```
 
-The application will automatically open your default browser to `http://127.0.0.1:8000`.
+The application will automatically open your default browser to `http://127.0.0.1:10598`.
 
 1. **Upload**: Drag and drop your `.fcs` files into the blue drop zone.
 2. **Review**: Check the extracted instrument info and data tables on the screen.
 3. **Export**: 
    - Click **Export PDF** on a specific file card for an individual report.
    - Click **Export All (PDF ZIP)** at the top to download reports for all loaded files.
+
+### Running in Background
+
+To run the application in the background, use `nohup`:
+
+```bash
+nohup python3 main.py > nohup.out 2>&1 &
+```
+
+View the logs:
+
+```bash
+tail -f nohup.out
+```
+
+### Troubleshooting: Port Already in Use
+
+If you cannot access the application, the port `10598` may be occupied by a previous process.
+
+**Check port usage:**
+
+```bash
+lsof -i :10598
+```
+
+**Kill the process occupying the port:**
+
+```bash
+fuser -k 10598/tcp
+```
+
+Or manually kill by PID:
+
+```bash
+kill -9 <PID>
+```
+
+Then restart the application.
 
 ## Tech Stack
 
