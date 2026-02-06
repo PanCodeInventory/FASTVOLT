@@ -78,6 +78,19 @@ A: 在 GitHub Releases 页面下载 FASTVOLT-Windows.zip
 A: 可以！在 Actions 标签页点击 "Build and Release EXE" → "Run workflow"
    Yes! In Actions tab, click "Build and Release EXE" → "Run workflow"
 
+### Q: 如何卸载 Windows 可执行文件？/ How to uninstall the Windows executable?
+A: FASTVOLT 是便携式应用，无需传统卸载：
+   1. 关闭应用程序 / Close the application
+   2. 删除包含 FASTVOLT.exe 的文件夹 / Delete the folder containing FASTVOLT.exe
+   3. 完成！应用不会在系统中留下任何文件 / Done! The app leaves no files in the system
+   
+   FASTVOLT is portable, no traditional uninstall needed:
+   1. Close the application
+   2. Delete the folder containing FASTVOLT.exe
+   3. Done! The app leaves no files in the system
+   
+   详细说明请参阅 / For detailed instructions, see: UNINSTALL.md
+
 ## 文件说明 / File Descriptions
 
 | 文件 / File | 用途 / Purpose |
@@ -88,14 +101,17 @@ A: 可以！在 Actions 标签页点击 "Build and Release EXE" → "Run workflo
 | .github/workflows/release.yml | 自动发布工作流 / Auto-release workflow |
 | RELEASE.md | 英文详细指南 / English detailed guide |
 | RELEASE_CN.md | 中文详细指南 / Chinese detailed guide |
+| UNINSTALL.md | 卸载指南（中英双语）/ Uninstall guide (bilingual) |
 | IMPLEMENTATION_SUMMARY.md | 技术实现总结 / Technical summary |
 
 ## 更多帮助 / More Help
 
 - 详细的英文指南：查看 RELEASE.md
 - 详细的中文指南：查看 RELEASE_CN.md
+- 卸载指南：查看 UNINSTALL.md
 - 技术细节：查看 IMPLEMENTATION_SUMMARY.md
 
 - Detailed English guide: See RELEASE.md
 - Detailed Chinese guide: See RELEASE_CN.md
+- Uninstall guide: See UNINSTALL.md
 - Technical details: See IMPLEMENTATION_SUMMARY.md

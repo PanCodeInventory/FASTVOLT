@@ -21,6 +21,18 @@ FASTVOLT is a lightweight local web application designed for researchers to quic
 
 No Python installation required!
 
+### Uninstalling (Windows Executable)
+
+Since FASTVOLT is a portable application, uninstallation is simple:
+
+1. **Close the application** - Close your browser and terminate FASTVOLT.exe if it's running
+2. **Delete the folder** - Delete the folder containing FASTVOLT.exe
+3. **Done!** - No registry entries or system files are created
+
+The application only creates temporary files during operation, which are automatically cleaned up when you close it.
+
+**For detailed uninstallation instructions, see [UNINSTALL.md](UNINSTALL.md)**
+
 ## Installation from Source
 
 ### Prerequisites
@@ -101,6 +113,18 @@ FASTVOLT 是一个轻量级本地 Web 应用程序，专为研究人员设计，
 4. 浏览器将自动打开 `http://127.0.0.1:8000`
 
 无需安装 Python！
+
+### 卸载（Windows 可执行文件）
+
+由于 FASTVOLT 是便携式应用程序，卸载非常简单：
+
+1. **关闭应用程序** - 关闭浏览器并终止正在运行的 FASTVOLT.exe
+2. **删除文件夹** - 删除包含 FASTVOLT.exe 的文件夹
+3. **完成！** - 不会创建注册表项或系统文件
+
+应用程序仅在运行期间创建临时文件，这些文件会在您关闭应用程序时自动清理。
+
+**详细的卸载说明，请参阅 [UNINSTALL.md](UNINSTALL.md)**
 
 ## 从源码安装
 
