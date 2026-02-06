@@ -7,6 +7,7 @@ import webbrowser
 import threading
 import time
 import os
+import sys
 import shutil
 import tempfile
 import io
@@ -29,7 +30,14 @@ app.add_middleware(
 
 # --- NEW: Serve Frontend Static Files ---
 # Get the absolute path to the frontend directory
-base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+# Handle both normal and frozen (PyInstaller) execution
+if getattr(sys, 'frozen', False) and hasattr(sys, '_MEIPASS'):
+    # Running as compiled exe
+    base_dir = sys._MEIPASS
+else:
+    # Running as normal Python script
+    base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 frontend_dir = os.path.join(base_dir, "frontend")
 
 # Mount the frontend directory to the root "/"
