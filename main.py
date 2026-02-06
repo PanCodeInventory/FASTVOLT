@@ -6,6 +6,9 @@ import webbrowser
 import threading
 import time
 
+# Configuration
+BROWSER_OPEN_DELAY = 2  # seconds to wait before opening browser
+
 def install_package(package):
     print(f"Installing {package}...")
     subprocess.check_call([sys.executable, "-m", "pip", "install", package])
@@ -23,7 +26,7 @@ if not is_frozen():
 
 def open_browser():
     """Open browser after a short delay"""
-    time.sleep(2)
+    time.sleep(BROWSER_OPEN_DELAY)
     webbrowser.open("http://127.0.0.1:8000")
 
 if __name__ == "__main__":
