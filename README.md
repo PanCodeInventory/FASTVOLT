@@ -84,3 +84,77 @@ The executable will be created in the `dist/` directory.
 ## License
 
 This project is developed for laboratory record enhancement.
+
+---
+
+# FASTVOLT（中文说明）
+
+FASTVOLT 是一个轻量级本地 Web 应用程序，专为研究人员设计，用于快速从流式细胞仪标准 (FCS) 文件中提取电压和补偿数据，并生成专业的、实验室就绪的 A4 PDF 报告。
+
+## 快速开始（Windows 可执行文件）
+
+**对于 Windows 用户**，您可以从 [Releases](https://github.com/PanCodeInventory/FASTVOLT/releases) 页面下载独立的可执行文件：
+
+1. 从最新版本下载 `FASTVOLT-Windows.zip`
+2. 解压 ZIP 文件
+3. 双击 `FASTVOLT.exe` 运行应用程序
+4. 浏览器将自动打开 `http://127.0.0.1:8000`
+
+无需安装 Python！
+
+## 从源码安装
+
+### 前置要求
+
+- Python 3.10 或更高版本
+- Chrome、Edge 或 Safari 浏览器
+
+### 安装步骤
+
+1. **克隆仓库**：
+   ```bash
+   git clone https://github.com/PanCodeInventory/FASTVOLT.git
+   cd FASTVOLT
+   ```
+
+2. **安装依赖**：
+   ```bash
+   pip install -r requirements.txt
+   ```
+
+### 使用方法
+
+使用以下命令运行应用程序：
+
+```bash
+python main.py
+```
+
+应用程序将自动在您的默认浏览器中打开 `http://127.0.0.1:8000`。
+
+1. **上传**：将您的 `.fcs` 文件拖放到蓝色拖放区域。
+2. **查看**：在屏幕上检查提取的仪器信息和数据表。
+3. **导出**：
+   - 点击特定文件卡片上的 **Export PDF**（导出 PDF）以获取单个报告。
+   - 点击顶部的 **Export All (PDF ZIP)**（导出全部）以下载所有已加载文件的报告。
+
+## 构建可执行文件
+
+要从源码构建自己的可执行文件：
+
+### Windows
+```batch
+build.bat
+```
+
+### Linux/macOS
+```bash
+chmod +x build.sh
+./build.sh
+```
+
+可执行文件将在 `dist/` 目录中创建。
+
+## 发布新版本
+
+查看 [RELEASE_CN.md](RELEASE_CN.md) 了解如何创建新的发布版本。
