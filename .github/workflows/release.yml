@@ -1,0 +1,62 @@
+name: Build and Release EXE
+
+on:
+  push:
+    tags:
+      - 'v*'  # Triggers on version tags like v1.0.0, v1.2.3, etc.
+  workflow_dispatch:  # Allows manual trigger from GitHub UI
+
+jobs:
+  build:
+    runs-on: windows-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.10'
+        
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        
+    - name: Build executable with PyInstaller
+      run: |
+        pyinstaller build.spec
+        
+    - name: Verify build
+      run: |
+        if (Test-Path "dist/FASTVOLT.exe") {
+          Write-Host "Build successful! FASTVOLT.exe created."
+          Get-Item "dist/FASTVOLT.exe" | Select-Object Name, Length, LastWriteTime
+        } else {
+          Write-Error "Build failed! FASTVOLT.exe not found."
+          exit 1
+        }
+      shell: pwsh
+      
+    - name: Create ZIP archive
+      run: |
+        Compress-Archive -Path dist/FASTVOLT.exe -DestinationPath FASTVOLT-Windows.zip
+      shell: pwsh
+      
+    - name: Upload artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: FASTVOLT-Windows
+        path: FASTVOLT-Windows.zip
+        
+    - name: Create Release
+      if: startsWith(github.ref, 'refs/tags/')
+      uses: softprops/action-gh-release@v1
+      with:
+        files: FASTVOLT-Windows.zip
+        draft: false
+        prerelease: false
+        generate_release_notes: true
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

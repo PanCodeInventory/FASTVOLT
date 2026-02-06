@@ -10,12 +10,25 @@ FASTVOLT is a lightweight local web application designed for researchers to quic
 - **Batch Export**: Process multiple files at once and download them as a ZIP archive.
 - **Intuitive UI**: Simple drag-and-drop web interface.
 
-## Prerequisites
+## Quick Start (Windows Executable)
+
+**For Windows users**, you can download the standalone executable from the [Releases](https://github.com/PanCodeInventory/FASTVOLT/releases) page:
+
+1. Download `FASTVOLT-Windows.zip` from the latest release
+2. Extract the ZIP file
+3. Double-click `FASTVOLT.exe` to run the application
+4. Your browser will open automatically at `http://127.0.0.1:8000`
+
+No Python installation required!
+
+## Installation from Source
+
+### Prerequisites
 
 - Python 3.10 or higher
 - Chrome, Edge, or Safari browser
 
-## Installation
+### Setup
 
 1. **Clone the repository**:
    ```bash
@@ -28,7 +41,7 @@ FASTVOLT is a lightweight local web application designed for researchers to quic
    pip install -r requirements.txt
    ```
 
-## Usage
+### Usage
 
 Run the application using the following command:
 
@@ -43,6 +56,23 @@ The application will automatically open your default browser to `http://127.0.0.
 3. **Export**: 
    - Click **Export PDF** on a specific file card for an individual report.
    - Click **Export All (PDF ZIP)** at the top to download reports for all loaded files.
+
+## Building Executable
+
+To build your own executable from source:
+
+### Windows
+```batch
+build.bat
+```
+
+### Linux/macOS
+```bash
+chmod +x build.sh
+./build.sh
+```
+
+The executable will be created in the `dist/` directory.
 
 ## Tech Stack
 

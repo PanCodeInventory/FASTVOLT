@@ -7,3 +7,4 @@ pandas
 pytest
 httpx
 reportlab
+pyinstaller
