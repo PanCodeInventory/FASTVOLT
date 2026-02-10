@@ -1,7 +1,9 @@
 from fastapi import FastAPI, UploadFile, File, HTTPException, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from typing import List
+from typing import List, Dict
+import uuid
+import flowio
 import uvicorn
 import webbrowser
 import threading
@@ -17,6 +19,40 @@ from .services.pdf_renderer import generate_pdf_report
 from .models import FCSMetadata
 
 app = FastAPI(title="FCS Export Tool")
+
+CACHE_DIR = os.path.join(tempfile.gettempdir(), "fastvolt_cache")
+os.makedirs(CACHE_DIR, exist_ok=True)
+FILE_CACHE: Dict[str, Dict[str, str]] = {}
+
+def cache_upload(file: UploadFile) -> Dict[str, str]:
+    file_id = str(uuid.uuid4())
+    original_name = file.filename or f"{file_id}.fcs"
+    suffix = os.path.splitext(original_name)[1] or ".fcs"
+    cached_path = os.path.join(CACHE_DIR, f"{file_id}{suffix}")
+
+    with open(cached_path, "wb") as buffer:
+        shutil.copyfileobj(file.file, buffer)
+
+    FILE_CACHE[file_id] = {
+        "path": cached_path,
+        "filename": original_name,
+    }
+
+    return {
+        "file_id": file_id,
+        "path": cached_path,
+        "filename": original_name,
+    }
+
+def pop_cached_file(file_id: str) -> Dict[str, str]:
+    entry = FILE_CACHE.pop(file_id, None)
+    if not entry:
+        return {}
+    try:
+        os.remove(entry["path"])
+    except OSError:
+        pass
+    return entry
 
 # CORS setup for local development
 app.add_middleware(
@@ -44,30 +80,32 @@ def read_index():
 @app.post("/api/parse", response_model=List[FCSMetadata])
 async def parse_files(files: List[UploadFile] = File(...)):
     results = []
-    
-    # Create a temporary directory to store uploaded files for processing
-    # We do this because flowio typically expects a file path or a seekable stream,
-    # and saving to disk ensures robust handling of potentially large files.
-    with tempfile.TemporaryDirectory() as temp_dir:
-        for file in files:
-            temp_path = os.path.join(temp_dir, file.filename)
-            try:
-                # Save uploaded file to temp path
-                with open(temp_path, "wb") as buffer:
-                    shutil.copyfileobj(file.file, buffer)
-                
-                # Parse the file
-                metadata = parse_fcs(temp_path, file.filename)
-                results.append(metadata)
-                
-            except Exception as e:
-                # Return error entry if one fails, rather than crashing whole batch
-                results.append(FCSMetadata(
-                    filename=file.filename,
-                    channels=[],
-                    error=f"Upload/Parse failed: {str(e)}"
-                ))
-                
+
+    # Cache uploaded files for later FCS export
+    for file in files:
+        file_id = None
+        cached_path = None
+        filename = file.filename or "uploaded.fcs"
+        try:
+            cached = cache_upload(file)
+            file_id = cached["file_id"]
+            cached_path = cached["path"]
+            filename = cached["filename"]
+
+            metadata = parse_fcs(cached_path, filename)
+            metadata.file_id = file_id
+            results.append(metadata)
+
+        except Exception as e:
+            if file_id:
+                pop_cached_file(file_id)
+            results.append(FCSMetadata(
+                filename=filename,
+                file_id=file_id,
+                channels=[],
+                error=f"Upload/Parse failed: {str(e)}"
+            ))
+
     return results
 
 @app.post("/api/export/pdf")
@@ -110,6 +148,61 @@ async def export_pdf_zip(metadata_list: List[FCSMetadata]):
         )
     except Exception as e:
         print(f"CRITICAL ERROR in batch export: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/export/fcs")
+async def export_fcs(metadata: FCSMetadata):
+    if not metadata.file_id:
+        raise HTTPException(status_code=400, detail="Missing file_id for export")
+
+    cache_entry = FILE_CACHE.get(metadata.file_id)
+    if not cache_entry:
+        raise HTTPException(status_code=404, detail="Cached file not found")
+
+    try:
+        fd = flowio.FlowData(cache_entry["path"])
+        text = dict(fd.text)
+
+        channel_map = {ch.name: ch for ch in metadata.channels}
+        for idx, channel_name in enumerate(fd.pnn_labels, start=1):
+            channel = channel_map.get(channel_name)
+            if not channel:
+                continue
+
+            marker = channel.marker
+            fluorophore = channel.fluorophore
+            if marker and fluorophore:
+                pns_value = f"{marker} {fluorophore}"
+            elif marker:
+                pns_value = marker
+            elif fluorophore:
+                pns_value = fluorophore
+            else:
+                continue
+
+            text[f"p{idx}s"] = pns_value
+
+        output_name = os.path.splitext(cache_entry["filename"])[0]
+        output_filename = f"{output_name}_mapped.fcs"
+        output_path = os.path.join(tempfile.gettempdir(), f"{metadata.file_id}_mapped.fcs")
+
+        fd.write_fcs(output_path, metadata=text)
+        with open(output_path, "rb") as output_file:
+            fcs_bytes = output_file.read()
+
+        try:
+            os.remove(output_path)
+        except OSError:
+            pass
+
+        pop_cached_file(metadata.file_id)
+
+        return Response(
+            content=fcs_bytes,
+            media_type="application/octet-stream",
+            headers={"Content-Disposition": f"attachment; filename={output_filename}"}
+        )
+    except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 
