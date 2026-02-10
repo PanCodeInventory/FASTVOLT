@@ -79,3 +79,34 @@ def test_export_fcs_success():
 
     assert response.status_code == 200
     assert response.content == b"FCS"
+
+def test_export_summary_csv():
+    payload = {
+        "experiment_name": "Run-1",
+        "panels": [
+            {
+                "id": "panel-1",
+                "name": "Panel A",
+                "compensation_id": "Comp-A",
+                "channel_map_default": {
+                    "FITC": {"label": "CD4 FITC"}
+                },
+                "samples": [
+                    {
+                        "filename": "sample1.fcs",
+                        "channels": [
+                            {"name": "FITC-A", "label": "", "voltage": 500.0}
+                        ],
+                        "channel_map_override": {}
+                    }
+                ]
+            }
+        ]
+    }
+
+    response = client.post("/api/export/summary", json=payload)
+
+    assert response.status_code == 200
+    assert response.headers["content-type"] == "text/csv; charset=utf-8"
+    assert "experiment_name,panel_name,sample_filename" in response.text
+    assert ",label," in response.text

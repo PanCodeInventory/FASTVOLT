@@ -1,7 +1,8 @@
 from fastapi import FastAPI, UploadFile, File, HTTPException, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from typing import List, Dict
+from typing import List, Dict, Any
+import csv
 import uuid
 import flowio
 import uvicorn
@@ -15,7 +16,7 @@ import io
 import zipfile
 from datetime import datetime
 from .services.parser import parse_fcs
-from .services.pdf_renderer import generate_pdf_report
+from .services.pdf_renderer import generate_pdf_report, generate_panel_summary_pdf
 from .models import FCSMetadata
 
 app = FastAPI(title="FCS Export Tool")
@@ -169,18 +170,10 @@ async def export_fcs(metadata: FCSMetadata):
             if not channel:
                 continue
 
-            marker = channel.marker
-            fluorophore = channel.fluorophore
-            if marker and fluorophore:
-                pns_value = f"{marker} {fluorophore}"
-            elif marker:
-                pns_value = marker
-            elif fluorophore:
-                pns_value = fluorophore
-            else:
+            if not channel.label:
                 continue
 
-            text[f"p{idx}s"] = pns_value
+            text[f"p{idx}s"] = channel.label
 
         output_name = os.path.splitext(cache_entry["filename"])[0]
         output_filename = f"{output_name}_mapped.fcs"
@@ -201,6 +194,156 @@ async def export_fcs(metadata: FCSMetadata):
             content=fcs_bytes,
             media_type="application/octet-stream",
             headers={"Content-Disposition": f"attachment; filename={output_filename}"}
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/export/summary")
+async def export_summary(payload: Dict[str, Any]):
+    try:
+        experiment_name = payload.get("experiment_name", "experiment")
+        panels = payload.get("panels", [])
+
+        def normalize_channel_name(name: str) -> str:
+            return name.replace("-A", "").replace("-H", "") if name else ""
+
+        output = io.StringIO()
+        writer = csv.writer(output)
+        writer.writerow([
+            "experiment_name",
+            "panel_name",
+            "sample_filename",
+            "channel_name",
+            "label",
+            "voltage",
+            "compensation_id",
+        ])
+
+        for panel in panels:
+            panel_name = panel.get("name", "")
+            compensation_id = panel.get("compensation_id", "")
+            channel_map_default = panel.get("channel_map_default", {})
+            samples = panel.get("samples", [])
+
+            for sample in samples:
+                filename = sample.get("filename", "")
+                channels = sample.get("channels", [])
+                override_map = sample.get("channel_map_override", {})
+
+                merged = {}
+                for ch in channels:
+                    channel_name = ch.get("name", "")
+                    base_name = normalize_channel_name(channel_name)
+                    default_entry = channel_map_default.get(base_name, {})
+                    override_entry = override_map.get(base_name, {})
+
+                    label = (
+                        override_entry.get("label")
+                        or default_entry.get("label")
+                        or ch.get("label")
+                        or ""
+                    )
+                    voltage = ch.get("voltage")
+
+                    if base_name not in merged:
+                        merged[base_name] = {
+                            "label": label,
+                            "voltage": voltage,
+                        }
+                    else:
+                        if not merged[base_name]["label"] and label:
+                            merged[base_name]["label"] = label
+                        if merged[base_name]["voltage"] is None and voltage is not None:
+                            merged[base_name]["voltage"] = voltage
+
+                for base_name, values in merged.items():
+                    writer.writerow([
+                        experiment_name,
+                        panel_name,
+                        filename,
+                        base_name,
+                        values.get("label", ""),
+                        "" if values.get("voltage") is None else values.get("voltage"),
+                        compensation_id,
+                    ])
+
+        csv_bytes = output.getvalue().encode("utf-8")
+        safe_name = experiment_name.replace(" ", "_") or "experiment"
+        filename = f"{safe_name}_summary.csv"
+
+        return Response(
+            content=csv_bytes,
+            media_type="text/csv",
+            headers={"Content-Disposition": f"attachment; filename={filename}"}
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/export/fcs/zip")
+async def export_fcs_zip(metadata_list: List[FCSMetadata]):
+    try:
+        zip_buffer = io.BytesIO()
+        with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
+            for metadata in metadata_list:
+                if not metadata.file_id:
+                    continue
+
+                cache_entry = FILE_CACHE.get(metadata.file_id)
+                if not cache_entry:
+                    continue
+
+                try:
+                    fd = flowio.FlowData(cache_entry["path"])
+                    text = dict(fd.text)
+
+                    channel_map = {ch.name: ch for ch in metadata.channels}
+                    for idx, channel_name in enumerate(fd.pnn_labels, start=1):
+                        channel = channel_map.get(channel_name)
+                        if not channel or not channel.label:
+                            continue
+                        text[f"p{idx}s"] = channel.label
+
+                    output_path = os.path.join(tempfile.gettempdir(), f"{metadata.file_id}_mapped.fcs")
+                    fd.write_fcs(output_path, metadata=text)
+                    with open(output_path, "rb") as output_file:
+                        fcs_bytes = output_file.read()
+
+                    try:
+                        os.remove(output_path)
+                    except OSError:
+                        pass
+
+                    clean_name = metadata.filename.replace(".fcs", "").replace(".FCS", "")
+                    zip_file.writestr(f"{clean_name}_mapped.fcs", fcs_bytes)
+
+                    pop_cached_file(metadata.file_id)
+                except Exception:
+                    continue
+
+        zip_buffer.seek(0)
+        return Response(
+            content=zip_buffer.getvalue(),
+            media_type="application/zip",
+            headers={"Content-Disposition": "attachment; filename=FCS_Mapped_Batch.zip"}
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/export/panel/pdf")
+async def export_panel_pdf(payload: Dict[str, Any]):
+    try:
+        panel_name = payload.get("panel_name", "Panel")
+        channel_map_default = payload.get("channel_map_default", {})
+        samples = payload.get("samples", [])
+        compensation = payload.get("compensation")
+
+        pdf_bytes = generate_panel_summary_pdf(panel_name, samples, channel_map_default, compensation)
+        safe_name = panel_name.replace(" ", "_") or "panel"
+        filename = f"{safe_name}_summary.pdf"
+        return Response(
+            content=pdf_bytes,
+            media_type="application/pdf",
+            headers={"Content-Disposition": f"attachment; filename={filename}"}
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
