@@ -88,6 +88,10 @@
                                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"></path></svg>
                                 Export PDF
                             </button>
+                            <button @click="exportFCS(file)" class="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1 rounded text-sm shadow transition-colors flex items-center gap-1">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"></path></svg>
+                                Export FCS
+                            </button>
                         </div>
                     </div>
 
@@ -101,6 +105,8 @@
                                         <tr>
                                             <th class="px-4 py-2 text-left text-gray-600 font-medium">Channel</th>
                                             <th class="px-4 py-2 text-left text-gray-600 font-medium">Label</th>
+                                            <th class="px-4 py-2 text-left text-gray-600 font-medium">Marker</th>
+                                            <th class="px-4 py-2 text-left text-gray-600 font-medium">Fluorophore</th>
                                             <th class="px-4 py-2 text-right text-gray-600 font-medium">Voltage</th>
                                         </tr>
                                     </thead>
@@ -108,6 +114,12 @@
                                         <tr v-for="ch in file.channels" :key="ch.name">
                                             <td class="px-4 py-2 font-mono text-gray-800">{{ ch.name }}</td>
                                             <td class="px-4 py-2 text-gray-600">{{ ch.label || '-' }}</td>
+                                            <td class="px-4 py-2">
+                                                <input v-model="ch.marker" class="w-full border border-gray-200 rounded px-2 py-1 text-sm" placeholder="Marker">
+                                            </td>
+                                            <td class="px-4 py-2">
+                                                <input v-model="ch.fluorophore" class="w-full border border-gray-200 rounded px-2 py-1 text-sm" placeholder="Fluorophore">
+                                            </td>
                                             <td class="px-4 py-2 text-right font-mono text-blue-600">{{ ch.voltage }}</td>
                                         </tr>
                                     </tbody>
@@ -267,6 +279,33 @@
                     }
                 }
 
+                const exportFCS = async (fileMetadata) => {
+                    try {
+                        const response = await fetch('http://127.0.0.1:8000/api/export/fcs', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json'
+                            },
+                            body: JSON.stringify(fileMetadata)
+                        })
+
+                        if (!response.ok) throw new Error("Export failed")
+
+                        const blob = await response.blob()
+                        const url = window.URL.createObjectURL(blob)
+                        const a = document.createElement('a')
+                        a.href = url
+                        a.download = `${fileMetadata.filename.replace('.fcs', '').replace('.FCS', '')}_mapped.fcs`
+                        document.body.appendChild(a)
+                        a.click()
+                        window.URL.revokeObjectURL(url)
+                        document.body.removeChild(a)
+                    } catch (e) {
+                        console.error(e)
+                        alert("Failed to export mapped FCS")
+                    }
+                }
+
                 return {
                     files,
                     fileInput,
@@ -276,7 +315,8 @@
                     handleDrop,
                     triggerFileInput,
                     exportPDF,
-                    exportBatch
+                    exportBatch,
+                    exportFCS
                 }
             }
         }).mount('#app')

@@ -119,16 +119,22 @@ def generate_pdf_report(metadata: FCSMetadata) -> bytes:
     # 5. Voltage Table
     elements.append(Paragraph("Channel Voltages", section_title_style))
     
-    vol_header = ["Channel", "Label", "Voltage"]
+    vol_header = ["Channel", "Label", "Marker", "Fluorophore", "Voltage"]
     vol_rows = [vol_header]
     for ch in metadata.channels:
-        vol_rows.append([ch.name, ch.label or "-", f"{ch.voltage:.2f}" if ch.voltage is not None else "N/A"])
+        vol_rows.append([
+            ch.name,
+            ch.label or "-",
+            ch.marker or "-",
+            ch.fluorophore or "-",
+            f"{ch.voltage:.2f}" if ch.voltage is not None else "N/A"
+        ])
     
-    vol_table = Table(vol_rows, colWidths=[5*cm, 11*cm, 3*cm])
+    vol_table = Table(vol_rows, colWidths=[4.5*cm, 4.5*cm, 4.5*cm, 3*cm, 2.5*cm])
     vol_table.setStyle(TableStyle([
         ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#4a86e8')),
         ('TEXTCOLOR', (0,0), (-1,0), colors.whitesmoke),
-        ('ALIGN', (2,0), (2,-1), 'RIGHT'),
+        ('ALIGN', (4,0), (4,-1), 'RIGHT'),
         ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold'),
         ('FONTSIZE', (0,0), (-1,-1), font_size),
         ('GRID', (0,0), (-1,-1), 0.5, colors.grey),
