@@ -1,7 +1,49 @@
 import flowio
 from typing import List, Dict, Optional
 import os
+import re
 from ..models import FCSMetadata, ChannelInfo, CompensationMatrix, InstrumentInfo
+
+FLUOROPHORE_TOKENS = [
+    "FITC",
+    "PE",
+    "APC",
+    "PERCP",
+    "PERCP-CY5.5",
+    "PE-CY7",
+    "APC-CY7",
+    "BV421",
+    "BV510",
+    "BV605",
+    "BV650",
+    "BV711",
+    "BV786",
+    "AF488",
+    "AF594",
+    "AF647",
+]
+
+def infer_fluorophore(name: Optional[str], label: Optional[str]) -> Optional[str]:
+    haystack = " ".join([label or "", name or ""]).upper()
+    for token in FLUOROPHORE_TOKENS:
+        if token in haystack:
+            return token
+
+    if name:
+        base = name.split("-")[0].strip()
+        return base or None
+
+    return None
+
+def infer_marker(label: Optional[str], fluorophore: Optional[str]) -> Optional[str]:
+    if not label:
+        return None
+
+    marker = label
+    if fluorophore:
+        marker = re.sub(rf"\b{re.escape(fluorophore)}\b", "", marker, flags=re.IGNORECASE)
+    marker = " ".join(marker.split())
+    return marker or label
 
 def parse_fcs(file_path: str, filename: str) -> FCSMetadata:
     try:
@@ -40,11 +82,15 @@ def parse_fcs(file_path: str, filename: str) -> FCSMetadata:
                     voltage = float(voltage_str)
                 except ValueError:
                     pass
-            
+
             if name:
+                fluorophore = infer_fluorophore(name, label)
+                marker = infer_marker(label, fluorophore)
                 channels.append(ChannelInfo(
                     name=name,
                     label=label,
+                    fluorophore=fluorophore,
+                    marker=marker,
                     voltage=voltage
                 ))
 

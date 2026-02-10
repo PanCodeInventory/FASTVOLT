@@ -9,6 +9,8 @@ class InstrumentInfo(BaseModel):
 class ChannelInfo(BaseModel):
     name: str
     label: Optional[str] = None
+    fluorophore: Optional[str] = None
+    marker: Optional[str] = None
     voltage: Optional[float] = None
 
 class CompensationMatrix(BaseModel):
@@ -17,6 +19,7 @@ class CompensationMatrix(BaseModel):
 
 class FCSMetadata(BaseModel):
     filename: str
+    file_id: Optional[str] = None
     timestamp: Optional[str] = None
     instrument: Optional[InstrumentInfo] = None
     channels: List[ChannelInfo]
