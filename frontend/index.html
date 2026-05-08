@@ -110,6 +110,15 @@
                                             <td class="px-4 py-2 text-gray-600">{{ ch.label || '-' }}</td>
                                             <td class="px-4 py-2 text-right font-mono text-blue-600">{{ ch.voltage }}</td>
                                         </tr>
+                                        <!-- FSC Threshold Row -->
+                                        <tr v-if="file.fsc_threshold !== null && file.fsc_threshold !== undefined"
+                                            class="bg-green-50 border-t-2 border-green-300">
+                                            <td class="px-4 py-2 font-bold text-green-800">FSC Threshold</td>
+                                            <td class="px-4 py-2 text-gray-500">-</td>
+                                            <td class="px-4 py-2 text-right font-mono font-bold text-green-700">
+                                                {{ Number(file.fsc_threshold).toLocaleString() }}
+                                            </td>
+                                        </tr>
                                     </tbody>
                                 </table>
                             </div>
@@ -141,6 +150,85 @@
                         </div>
                         <div v-else class="bg-yellow-50 p-4 rounded text-yellow-700 border border-yellow-200 h-full flex items-center justify-center">
                             No Compensation Matrix Found
+                        </div>
+                    </div>
+                    
+                    <!-- Panel Table (Fluorophore-Sample Design) -->
+                    <div v-if="file.panel_table" class="mt-6 col-span-1 lg:col-span-2">
+                        <h3 class="text-lg font-semibold mb-2 text-gray-700">Panel Design (Fluorophore-Sample)</h3>
+                        <div class="overflow-x-auto bg-white rounded shadow">
+                            <table class="min-w-full text-xs border-collapse">
+                                <thead>
+                                    <!-- Header Row 1: SIGNAL merged, FL1~FLN, Comments -->
+                                    <tr class="bg-blue-600 text-white">
+                                        <th colspan="2" class="px-3 py-2 text-center border border-blue-700 whitespace-nowrap">SIGNAL</th>
+                                        <th v-for="col in file.panel_table.columns" :key="'h1-'+col"
+                                            class="px-3 py-2 text-center border border-blue-700 whitespace-nowrap">
+                                            {{ col }}
+                                        </th>
+                                        <th class="px-3 py-2 text-center border border-blue-700 whitespace-nowrap">Comments</th>
+                                    </tr>
+                                    <!-- Header Row 2: NO, Fluor, fluorophore labels -->
+                                    <tr class="bg-blue-50">
+                                        <th class="px-3 py-1 text-center border border-gray-200 font-normal text-gray-500" style="font-size:10px;">NO.</th>
+                                        <th class="px-3 py-1 text-center border border-gray-200 font-normal text-gray-500" style="font-size:10px;">Fluor.</th>
+                                        <th v-for="(lbl, li) in file.panel_table.fluorophore_labels" :key="'h2-'+li"
+                                            class="px-3 py-1 text-center border border-gray-200 font-normal text-gray-400" style="font-size:10px;">
+                                            {{ lbl || '' }}
+                                        </th>
+                                        <th class="px-3 py-1 text-center border border-gray-200 font-normal text-gray-500" style="font-size:10px;"></th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr v-for="(row, rIdx) in file.panel_table.rows" :key="rIdx"
+                                        :class="rIdx % 2 === 0 ? 'bg-white' : 'bg-gray-50'">
+                                        <!-- NO (auto-numbered) -->
+                                        <td class="px-2 py-1 text-center text-gray-500 border border-gray-200" style="font-size:10px;width:30px;">
+                                            {{ rIdx + 1 }}
+                                        </td>
+                                        <!-- Fluor (editable) -->
+                                        <td class="px-2 py-1 border border-gray-200">
+                                            <input v-model="row[1]"
+                                                   class="w-20 border border-gray-300 rounded px-1 py-0.5 text-xs focus:border-blue-400 focus:ring-1 focus:ring-blue-200 outline-none"
+                                                   placeholder="Sample">
+                                        </td>
+                                        <!-- FL columns (editable) -->
+                                        <td v-for="(val, cIdx) in row.slice(2, row.length - 1)" :key="cIdx"
+                                            class="px-2 py-1 border border-gray-200">
+                                            <input v-model="row[cIdx + 2]"
+                                                   class="w-16 border border-gray-300 rounded px-1 py-0.5 text-xs focus:border-blue-400 focus:ring-1 focus:ring-blue-200 outline-none"
+                                                   placeholder="-">
+                                        </td>
+                                        <!-- Comments (editable) -->
+                                        <td class="px-2 py-1 border border-gray-200">
+                                            <input v-model="row[row.length - 1]"
+                                                   class="w-24 border border-gray-300 rounded px-1 py-0.5 text-xs focus:border-blue-400 focus:ring-1 focus:ring-blue-200 outline-none"
+                                                   placeholder="Notes">
+                                        </td>
+                                        <!-- Delete button -->
+                                        <td class="px-2 py-1 border border-gray-200 text-center">
+                                            <button @click="removePanelRow(file, rIdx)"
+                                                    class="text-red-400 hover:text-red-600 text-xs font-bold px-1">✕</button>
+                                        </td>
+                                    </tr>
+                                    <!-- Empty state -->
+                                    <tr v-if="file.panel_table.rows.length === 0">
+                                        <td :colspan="file.panel_table.columns.length + 4" class="px-4 py-6 text-center text-gray-400 text-sm">
+                                            No data yet. Click "+ 添加行" to add rows.
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                        <div class="mt-2 flex gap-2">
+                            <button @click="addPanelRow(file)"
+                                    class="bg-blue-500 hover:bg-blue-600 text-white px-3 py-1 rounded text-xs transition-colors flex items-center gap-1">
+                                <span class="text-base leading-none">+</span> 添加行
+                            </button>
+                            <button @click="pastePanelCSV(file)"
+                                    class="bg-gray-200 hover:bg-gray-300 text-gray-700 px-3 py-1 rounded text-xs transition-colors">
+                                📋 Paste CSV
+                            </button>
                         </div>
                     </div>
                 </div>
@@ -235,6 +323,46 @@
                     }
                 }
 
+                const addPanelRow = (file) => {
+                    if (!file.panel_table) return
+                    const nCols = file.panel_table.columns.length
+                    // [NO(auto), Fluor, FL1..N, Comments]
+                    const newRow = ['', '', ...Array(nCols).fill(''), '']
+                    file.panel_table.rows.push(newRow)
+                }
+
+                const removePanelRow = (file, idx) => {
+                    if (!file.panel_table) return
+                    file.panel_table.rows.splice(idx, 1)
+                }
+
+                const pastePanelCSV = (file) => {
+                    if (!file.panel_table) return
+                    const text = prompt("Paste tab-separated data:\nLine 1 = header (skiped)\nFollowing = data rows\nColumns: SampleName  FL1  FL2  ...  Comments")
+                    if (!text) return
+
+                    const lines = text.trim().split('\n')
+                    if (lines.length < 2) return
+
+                    const nCols = file.panel_table.columns.length
+                    // Skip header (line 0), parse data rows
+                    for (let i = 1; i < lines.length; i++) {
+                        const parts = lines[i].split('\t')
+                        if (parts.length < 1) continue
+
+                        const row = ['', '', ...Array(nCols).fill(''), '']
+                        row[1] = parts[0] || ''  // Sample/Fluor. name
+                        for (let j = 1; j < parts.length && j <= nCols; j++) {
+                            row[j + 1] = parts[j] || ''
+                        }
+                        const commentIdx = 2 + nCols
+                        if (parts.length > nCols + 1) {
+                            row[commentIdx] = parts.slice(nCols + 1).join(' ')
+                        }
+                        file.panel_table.rows.push(row)
+                    }
+                }
+
                 const exportBatch = async () => {
                     if (files.value.length === 0) return
                     loading.value = true
@@ -276,7 +404,10 @@
                     handleDrop,
                     triggerFileInput,
                     exportPDF,
-                    exportBatch
+                    exportBatch,
+                    addPanelRow,
+                    removePanelRow,
+                    pastePanelCSV
                 }
             }
         }).mount('#app')

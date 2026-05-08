@@ -1,7 +1,59 @@
 import flowio
 from typing import List, Dict, Optional
 import os
-from ..models import FCSMetadata, ChannelInfo, CompensationMatrix, InstrumentInfo
+from ..models import FCSMetadata, ChannelInfo, CompensationMatrix, InstrumentInfo, PanelTable
+
+def extract_threshold(text: Dict[str, str]) -> Optional[float]:
+    """Extract FSC threshold from FCS text metadata.
+    
+    Priority:
+    1. BD format: threshold = "FSC,15000" (key='threshold')
+    2. CytoFLEX format: ch{id}th with ch{id}id=FSC, or pchid=FSC
+    """
+    # 1. Check BD-style 'threshold' key
+    threshold_val = text.get('threshold')
+    if threshold_val:
+        parts = threshold_val.split(',')
+        if len(parts) == 2:
+            param_name, value_str = parts[0].strip(), parts[1].strip()
+            if 'FSC' in param_name.upper():
+                try:
+                    return float(value_str)
+                except ValueError:
+                    pass
+    
+    # 2. Check CytoFLEX-style per-channel thresholds
+    # Find which channel is FSC via ch{id}id or pchid
+    fsc_ch_num = None
+    
+    # Try pchid (primary threshold parameter)
+    if text.get('pchid', '').upper() == 'FSC':
+        # Look for ch{X}th where ch{X}id = FSC
+        for key, val in text.items():
+            if key.endswith('th'):
+                ch_num = key.replace('ch', '').replace('th', '')
+                if ch_num.isdigit():
+                    id_key = f'ch{ch_num}id'
+                    if text.get(id_key, '').upper() == 'FSC':
+                        try:
+                            return float(val)
+                        except ValueError:
+                            pass
+    
+    # Try ch{id}id keys directly
+    for key, val in text.items():
+        if key.endswith('id') and val.upper() == 'FSC':
+            ch_num = key.replace('ch', '').replace('id', '')
+            if ch_num.isdigit():
+                th_key = f'ch{ch_num}th'
+                if th_key in text:
+                    try:
+                        return float(text[th_key])
+                    except ValueError:
+                        pass
+    
+    return None
+
 
 def parse_fcs(file_path: str, filename: str) -> FCSMetadata:
     try:
@@ -167,12 +219,23 @@ def parse_fcs(file_path: str, filename: str) -> FCSMetadata:
         print(f"DEBUG: Extracted Instrument Info: {instrument}")
         print(f"DEBUG: Extracted Timestamp: {timestamp}")
 
+        # 5. Extract FSC Threshold
+        fsc_threshold = extract_threshold(text)
+        
+        # 6. Build PanelTable skeleton (columns and fluorophore labels)
+        panel_table = build_panel_table(text, channels)
+        
+        print(f"DEBUG: FSC Threshold: {fsc_threshold}")
+        print(f"DEBUG: PanelTable columns: {panel_table.columns if panel_table else 'None'}")
+
         return FCSMetadata(
             filename=filename,
             timestamp=timestamp,
             instrument=instrument,
             channels=channels,
-            compensation=compensation
+            compensation=compensation,
+            fsc_threshold=fsc_threshold,
+            panel_table=panel_table
         )
 
     except Exception as e:
@@ -181,3 +244,89 @@ def parse_fcs(file_path: str, filename: str) -> FCSMetadata:
             channels=[],
             error=str(e)
         )
+
+
+def _extract_spill_fluorochromes(text: Dict[str, str]) -> List[str]:
+    """Extract fluorochrome names from spillover/spill keywords."""
+    for key in ['spillover', 'spill', '$SPILLOVER', '$SPILL']:
+        if key in text:
+            spill_str = text[key]
+            parts = spill_str.split(',')
+            if len(parts) > 0:
+                try:
+                    n = int(parts[0])
+                    return [f.strip() for f in parts[1:n+1]]
+                except (ValueError, IndexError):
+                    continue
+    return []
+
+
+def build_panel_table(text: Dict[str, str], channels: List[ChannelInfo]) -> Optional[PanelTable]:
+    """Build a PanelTable skeleton from FCS metadata.
+    
+    Detects fluorescence channels (excludes FSC, SSC, Time, Width)
+    and extracts fluorophore labels for the second header row.
+    
+    Priority for fluorochrome detection:
+    1. compchh/compcha (CytoFLEX clean fluorophore names)
+    2. spill (BD clean names)
+    3. spillover (standard FCS, may need dedup)
+    4. Derive from channel names (fallback)
+    """
+    fluorochromes = []
+    
+    # 1. Try CytoFLEX compchh/compcha keys (cleanest fluorophore names)
+    for key in ['compchh', 'compcha']:
+        if key in text:
+            parts = text[key].split()
+            if parts:
+                # Deduplicate (H and A might have same names)
+                seen = []
+                for p in parts:
+                    if p not in seen:
+                        seen.append(p)
+                        fluorochromes.append(p)
+                break
+    
+    # 2. Try spill key (BD format, clean names)
+    if not fluorochromes:
+        fluorochromes = _extract_spill_fluorochromes(text)
+    
+    # 3. Try deriving from channel names (fallback)
+    if not fluorochromes:
+        seen_bases = []
+        for ch in channels:
+            name = ch.name or ''
+            if any(name.upper().startswith(p) for p in ['FSC', 'SSC']):
+                continue
+            if 'TIME' in name.upper() or 'WIDTH' in name.upper():
+                continue
+            base = name
+            for suffix in ['-A', '-H', '-W']:
+                if base.upper().endswith(suffix.upper()):
+                    base = base[:-len(suffix)]
+                    break
+            if base not in seen_bases:
+                seen_bases.append(base)
+                fluorochromes.append(base)
+    
+    if not fluorochromes:
+        return None
+    
+    columns = [f"FL{i+1}" for i in range(len(fluorochromes))]
+    
+    # Clean display names (strip -A, -H, -W suffixes if present)
+    clean_labels = []
+    for fc in fluorochromes:
+        clean = fc
+        for suffix in ['-A', '-H', '-W']:
+            if clean.upper().endswith(suffix.upper()):
+                clean = clean[:-len(suffix)]
+                break
+        clean_labels.append(clean)
+    
+    return PanelTable(
+        columns=columns,
+        fluorophore_labels=clean_labels,
+        rows=[]
+    )
