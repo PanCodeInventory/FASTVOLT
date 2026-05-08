@@ -21,7 +21,7 @@ def test_pdf_with_threshold_and_panel():
             columns=["FL1", "FL2"],
             fluorophore_labels=["FITC", "PE"],
             rows=[
-                ["1", "Control-1", "CD45", "CD3", "test"],
+                ["Control-1", "CD45", "CD3", "test"],
             ]
         )
     )

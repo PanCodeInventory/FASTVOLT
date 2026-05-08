@@ -105,79 +105,95 @@ def parse_fcs(file_path: str, filename: str) -> FCSMetadata:
         if not has_voltages:
             print("Standard $PnV voltages not found. Checking CytoFLEX keywords...")
             
-            # Keys found in log are lowercase: 'compchh', 'compgainh'
-            for suffix in ['h', 'a']: # Height and Area (lowercase)
-                key_names = f'compch{suffix}'
-                key_gains = f'compgain{suffix}'
-                
-                if key_names in text and key_gains in text:
-                    try:
-                        # Values appear to be tab or space separated
-                        c_names = text[key_names].split()
-                        c_gains = text[key_gains].split()
+            # Beckman/CytoFLEX: compgainh and compgaina are identical,
+            # compchh and compcha are identical.
+            # Only use the 'a' (Area) version to avoid duplicate matching.
+            key_names = 'compcha'
+            key_gains = 'compgaina'
+            
+            if key_names in text and key_gains in text:
+                try:
+                    c_names = text[key_names].split()
+                    c_gains = text[key_gains].split()
+                    
+                    if len(c_names) == len(c_gains):
+                        print(f"Found CytoFLEX gains (Area): {list(zip(c_names, c_gains))}")
                         
-                        if len(c_names) == len(c_gains):
-                            print(f"Found CytoFLEX gains for {suffix}: {list(zip(c_names, c_gains))}")
+                        for idx, cn in enumerate(c_names):
+                            gain_val = float(c_gains[idx])
                             
-                            for idx, cn in enumerate(c_names):
-                                gain_val = float(c_gains[idx])
-                                
-                                # Match channel
-                                for ch in channels:
-                                    # ch.name might be "FL1-H" or "FITC-A"
-                                    # Check suffix match (H vs A)
-                                    target_suffix = "-H" if suffix == 'h' else "-A"
-                                    if not ch.name.upper().endswith(target_suffix):
-                                        continue
-                                        
-                                    # Check if gain name is in channel name or label
-                                    # cn="FITC", label="CD45 FITC-H" -> Match
-                                    if (ch.label and cn in ch.label) or (cn in ch.name):
-                                        ch.voltage = gain_val
-                                        
-                    except Exception as e:
-                        print(f"Error parsing CytoFLEX gains: {e}")
+                            for ch in channels:
+                                # Only match Area (-A) channels
+                                if not ch.name.upper().endswith("-A"):
+                                    continue
+                                    
+                                if (ch.label and cn in ch.label) or (cn in ch.name):
+                                    ch.voltage = gain_val
+                                    
+                except Exception as e:
+                    print(f"Error parsing CytoFLEX gains: {e}")
 
-        # 2. Extract Spillover
+        # 2. Extract Compensation Matrix
         compensation = None
         
-        # Log showed key is 'spillover' (lowercase, no $)
-        # But we should check variants to be safe
-        spill_keys = ['spillover', '$SPILLOVER', '$SPILL', 'SPILL']
-        spill_str = None
-        
-        for key in spill_keys:
-            # Check lowercase version of keys against text keys
-            # or direct access if text keys are mixed
-            if key in text:
-                spill_str = text[key]
-                break
-            elif key.lower() in text:
-                spill_str = text[key.lower()]
-                break
-        
-        if spill_str:
-            # Format: n, col1, col2, ..., coln, val1, val2, ...
-            parts = spill_str.split(',')
-            if len(parts) > 0:
-                try:
-                    n = int(parts[0])
-                    fluorochromes = parts[1:n+1]
-                    values_flat = [float(x) for x in parts[n+1:]]
-                    
-                    # Reshape values into matrix
+        # Priority 1: Beckman/CytoFLEX 'compa' + 'compcha' (Area-only, avoids H+A duplication)
+        # Beckman spillover contains both H and A channels (26x26), but H and A are
+        # the same fluorochromes — only keep Area version.
+        if 'compa' in text and 'compcha' in text:
+            try:
+                comp_names = text['compcha'].split()
+                comp_vals = text['compa'].split()
+                n = len(comp_names)
+                expected = n * n
+                
+                if len(comp_vals) >= expected:
+                    values_flat = [float(x) for x in comp_vals[:expected]]
                     values = []
                     for r in range(n):
-                        row = values_flat[r*n : (r+1)*n]
-                        values.append(row)
+                        values.append(values_flat[r*n:(r+1)*n])
                     
                     compensation = CompensationMatrix(
-                        fluorochromes=fluorochromes,
+                        fluorochromes=comp_names,
                         values=values
                     )
-                except Exception as e:
-                    print(f"Error parsing spillover string: {e}")
-                    # Could log this error but continue without comp matrix
+                    print(f"Using Beckman compa compensation ({n}x{n})")
+            except Exception as e:
+                print(f"Error parsing Beckman compa: {e}")
+        
+        # Priority 2: Standard spillover/spill (BD, etc.)
+        if compensation is None:
+            spill_keys = ['spillover', '$SPILLOVER', '$SPILL', 'SPILL']
+            spill_str = None
+            
+            for key in spill_keys:
+                if key in text:
+                    spill_str = text[key]
+                    break
+                elif key.lower() in text:
+                    spill_str = text[key.lower()]
+                    break
+            
+            if spill_str:
+                # Format: n, col1, col2, ..., coln, val1, val2, ...
+                parts = spill_str.split(',')
+                if len(parts) > 0:
+                    try:
+                        n = int(parts[0])
+                        fluorochromes = parts[1:n+1]
+                        values_flat = [float(x) for x in parts[n+1:]]
+                        
+                        # Reshape values into matrix
+                        values = []
+                        for r in range(n):
+                            row = values_flat[r*n : (r+1)*n]
+                            values.append(row)
+                        
+                        compensation = CompensationMatrix(
+                            fluorochromes=fluorochromes,
+                            values=values
+                        )
+                    except Exception as e:
+                        print(f"Error parsing spillover string: {e}")
 
         # 4. Extract Instrument Metadata
         # Keys: $MODEL (Model), $CYTSN (Serial Number), $CYT (Instrument Name)
@@ -275,18 +291,16 @@ def build_panel_table(text: Dict[str, str], channels: List[ChannelInfo]) -> Opti
     """
     fluorochromes = []
     
-    # 1. Try CytoFLEX compchh/compcha keys (cleanest fluorophore names)
-    for key in ['compchh', 'compcha']:
-        if key in text:
-            parts = text[key].split()
-            if parts:
-                # Deduplicate (H and A might have same names)
-                seen = []
-                for p in parts:
-                    if p not in seen:
-                        seen.append(p)
-                        fluorochromes.append(p)
-                break
+    # 1. Try CytoFLEX compcha key (Area version — compchh is identical)
+    if 'compcha' in text:
+        parts = text['compcha'].split()
+        if parts:
+            fluorochromes = list(parts)
+    elif 'compchh' in text:
+        # Fallback if compcha not present
+        parts = text['compchh'].split()
+        if parts:
+            fluorochromes = list(parts)
     
     # 2. Try spill key (BD format, clean names)
     if not fluorochromes:

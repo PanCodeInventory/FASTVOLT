@@ -21,7 +21,7 @@ def test_export_pdf_with_panel_table():
         panel_table=PanelTable(
             columns=["FL1"],
             fluorophore_labels=["FITC"],
-            rows=[["1", "Control", "CD4", "test"]]
+            rows=[["Control", "CD4", "test"]]
         )
     )
     response = client.post("/api/export/pdf", json=mock_metadata.model_dump())

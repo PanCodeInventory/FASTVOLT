@@ -105,7 +105,7 @@
                                         </tr>
                                     </thead>
                                     <tbody class="divide-y divide-gray-200">
-                                        <tr v-for="ch in file.channels" :key="ch.name">
+                                        <tr v-for="ch in file.channels.filter(c => !c.name || !c.name.toUpperCase().includes('TIME'))" :key="ch.name">
                                             <td class="px-4 py-2 font-mono text-gray-800">{{ ch.name }}</td>
                                             <td class="px-4 py-2 text-gray-600">{{ ch.label || '-' }}</td>
                                             <td class="px-4 py-2 text-right font-mono text-blue-600">{{ ch.voltage }}</td>
@@ -155,23 +155,22 @@
                     
                     <!-- Panel Table (Fluorophore-Sample Design) -->
                     <div v-if="file.panel_table" class="mt-6 col-span-1 lg:col-span-2">
-                        <h3 class="text-lg font-semibold mb-2 text-gray-700">Panel Design (Fluorophore-Sample)</h3>
+                        <h3 class="text-lg font-semibold mb-2 text-gray-700">Panel Design</h3>
                         <div class="overflow-x-auto bg-white rounded shadow">
                             <table class="min-w-full text-xs border-collapse">
                                 <thead>
-                                    <!-- Header Row 1: SIGNAL merged, FL1~FLN, Comments -->
+                                    <!-- Header Row 1: SIGNAL, FL1~FLN, Comments -->
                                     <tr class="bg-blue-600 text-white">
-                                        <th colspan="2" class="px-3 py-2 text-center border border-blue-700 whitespace-nowrap">SIGNAL</th>
+                                        <th class="px-3 py-2 text-center border border-blue-700 whitespace-nowrap">SIGNAL</th>
                                         <th v-for="col in file.panel_table.columns" :key="'h1-'+col"
                                             class="px-3 py-2 text-center border border-blue-700 whitespace-nowrap">
                                             {{ col }}
                                         </th>
                                         <th class="px-3 py-2 text-center border border-blue-700 whitespace-nowrap">Comments</th>
                                     </tr>
-                                    <!-- Header Row 2: NO, Fluor, fluorophore labels -->
+                                    <!-- Header Row 2: Sample, fluorophore labels -->
                                     <tr class="bg-blue-50">
-                                        <th class="px-3 py-1 text-center border border-gray-200 font-normal text-gray-500" style="font-size:10px;">NO.</th>
-                                        <th class="px-3 py-1 text-center border border-gray-200 font-normal text-gray-500" style="font-size:10px;">Fluor.</th>
+                                        <th class="px-3 py-1 text-center border border-gray-200 font-normal text-gray-500" style="font-size:10px;">Sample</th>
                                         <th v-for="(lbl, li) in file.panel_table.fluorophore_labels" :key="'h2-'+li"
                                             class="px-3 py-1 text-center border border-gray-200 font-normal text-gray-400" style="font-size:10px;">
                                             {{ lbl || '' }}
@@ -182,20 +181,16 @@
                                 <tbody>
                                     <tr v-for="(row, rIdx) in file.panel_table.rows" :key="rIdx"
                                         :class="rIdx % 2 === 0 ? 'bg-white' : 'bg-gray-50'">
-                                        <!-- NO (auto-numbered) -->
-                                        <td class="px-2 py-1 text-center text-gray-500 border border-gray-200" style="font-size:10px;width:30px;">
-                                            {{ rIdx + 1 }}
-                                        </td>
-                                        <!-- Fluor (editable) -->
+                                        <!-- Sample (editable) -->
                                         <td class="px-2 py-1 border border-gray-200">
-                                            <input v-model="row[1]"
-                                                   class="w-20 border border-gray-300 rounded px-1 py-0.5 text-xs focus:border-blue-400 focus:ring-1 focus:ring-blue-200 outline-none"
+                                            <input v-model="row[0]"
+                                                   class="w-24 border border-gray-300 rounded px-1 py-0.5 text-xs focus:border-blue-400 focus:ring-1 focus:ring-blue-200 outline-none"
                                                    placeholder="Sample">
                                         </td>
                                         <!-- FL columns (editable) -->
-                                        <td v-for="(val, cIdx) in row.slice(2, row.length - 1)" :key="cIdx"
+                                        <td v-for="(val, cIdx) in row.slice(1, row.length - 1)" :key="cIdx"
                                             class="px-2 py-1 border border-gray-200">
-                                            <input v-model="row[cIdx + 2]"
+                                            <input v-model="row[cIdx + 1]"
                                                    class="w-16 border border-gray-300 rounded px-1 py-0.5 text-xs focus:border-blue-400 focus:ring-1 focus:ring-blue-200 outline-none"
                                                    placeholder="-">
                                         </td>
@@ -213,7 +208,7 @@
                                     </tr>
                                     <!-- Empty state -->
                                     <tr v-if="file.panel_table.rows.length === 0">
-                                        <td :colspan="file.panel_table.columns.length + 4" class="px-4 py-6 text-center text-gray-400 text-sm">
+                                        <td :colspan="file.panel_table.columns.length + 3" class="px-4 py-6 text-center text-gray-400 text-sm">
                                             No data yet. Click "+ 添加行" to add rows.
                                         </td>
                                     </tr>
@@ -258,7 +253,7 @@
                     }
 
                     try {
-                        const response = await fetch('http://127.0.0.1:8000/api/parse', {
+                        const response = await fetch('/api/parse', {
                             method: 'POST',
                             body: formData
                         })
@@ -298,7 +293,7 @@
 
                 const exportPDF = async (fileMetadata) => {
                     try {
-                        const response = await fetch('http://127.0.0.1:8000/api/export/pdf', {
+                        const response = await fetch('/api/export/pdf', {
                             method: 'POST',
                             headers: {
                                 'Content-Type': 'application/json'
@@ -326,8 +321,8 @@
                 const addPanelRow = (file) => {
                     if (!file.panel_table) return
                     const nCols = file.panel_table.columns.length
-                    // [NO(auto), Fluor, FL1..N, Comments]
-                    const newRow = ['', '', ...Array(nCols).fill(''), '']
+                    // [Sample, FL1..N, Comments]
+                    const newRow = ['', ...Array(nCols).fill(''), '']
                     file.panel_table.rows.push(newRow)
                 }
 
@@ -341,23 +336,28 @@
                     const text = prompt("Paste tab-separated data:\nLine 1 = header (skiped)\nFollowing = data rows\nColumns: SampleName  FL1  FL2  ...  Comments")
                     if (!text) return
 
+                    const nCols = file.panel_table.columns.length
+                    // Split by \n first, then clean \r from each line
                     const lines = text.trim().split('\n')
                     if (lines.length < 2) return
 
-                    const nCols = file.panel_table.columns.length
                     // Skip header (line 0), parse data rows
                     for (let i = 1; i < lines.length; i++) {
-                        const parts = lines[i].split('\t')
+                        // Clean \r characters from Word/Excel paste
+                        const cleanLine = lines[i].replace(/\r/g, '')
+                        if (!cleanLine.trim()) continue
+
+                        const parts = cleanLine.split('\t')
                         if (parts.length < 1) continue
 
-                        const row = ['', '', ...Array(nCols).fill(''), '']
-                        row[1] = parts[0] || ''  // Sample/Fluor. name
+                        const row = ['', ...Array(nCols).fill(''), '']
+                        row[0] = (parts[0] || '').replace(/\r/g, '')  // Sample name
                         for (let j = 1; j < parts.length && j <= nCols; j++) {
-                            row[j + 1] = parts[j] || ''
+                            row[j] = (parts[j] || '').replace(/\r/g, '')
                         }
-                        const commentIdx = 2 + nCols
+                        const commentIdx = 1 + nCols
                         if (parts.length > nCols + 1) {
-                            row[commentIdx] = parts.slice(nCols + 1).join(' ')
+                            row[commentIdx] = parts.slice(nCols + 1).join(' ').replace(/\r/g, '')
                         }
                         file.panel_table.rows.push(row)
                     }
@@ -367,7 +367,7 @@
                     if (files.value.length === 0) return
                     loading.value = true
                     try {
-                        const response = await fetch('http://127.0.0.1:8000/api/export/pdf/zip', {
+                        const response = await fetch('/api/export/pdf/zip', {
                             method: 'POST',
                             headers: {
                                 'Content-Type': 'application/json'
