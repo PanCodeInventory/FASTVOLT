@@ -29,4 +29,6 @@ class FCSMetadata(BaseModel):
     compensation: Optional[CompensationMatrix] = None
     fsc_threshold: Optional[float] = None
     panel_table: Optional[PanelTable] = None
+    experiment_name: Optional[str] = None
+    experimenter: Optional[str] = None
     error: Optional[str] = None

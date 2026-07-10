@@ -70,7 +70,7 @@
             <div v-if="files.length > 0" class="space-y-8">
                 <div v-for="(file, index) in files" :key="index" class="border rounded-lg p-6 bg-gray-50 shadow-sm">
                     <div class="flex justify-between items-start mb-4 border-b pb-2">
-                        <div>
+                        <div class="flex-1">
                             <h2 class="text-xl font-bold text-gray-800">{{ file.filename }}</h2>
                             <div class="text-sm text-gray-500 mt-1 space-y-1">
                                 <p v-if="file.timestamp">Date: {{ file.timestamp.split(' ')[0] }}</p>
@@ -78,6 +78,20 @@
                                     <span v-if="file.instrument.model">Model: <span class="font-medium text-gray-700">{{ file.instrument.model }}</span></span>
                                     <span v-if="file.instrument.serial_number">SN: <span class="font-medium text-gray-700">{{ file.instrument.serial_number }}</span></span>
                                 </p>
+                            </div>
+                            <!-- Editable experiment info (exported into the PDF header) -->
+                            <div class="flex gap-3 mt-2">
+                                <label class="flex items-center gap-1.5 text-sm text-gray-700">
+                                    <span class="text-gray-500">Experiment Name:</span>
+                                    <input v-model="file.experiment_name"
+                                           class="border border-gray-300 rounded px-2 py-1 text-sm focus:border-blue-400 focus:ring-1 focus:ring-blue-200 outline-none w-56"
+                                           placeholder="optional">
+                                </label>
+                                <label class="flex items-center gap-1.5 text-sm text-gray-700">
+                                    <span class="text-gray-500">Experimenter:</span>
+                                    <input v-model="file.experimenter"
+                                           class="border border-gray-300 rounded px-2 py-1 text-sm focus:border-blue-400 focus:ring-1 focus:ring-blue-200 outline-none w-32">
+                                </label>
                             </div>
                         </div>
                         <div v-if="file.error" class="text-red-500 font-bold bg-red-100 px-2 py-1 rounded">
@@ -333,7 +347,7 @@
 
                 const pastePanelCSV = (file) => {
                     if (!file.panel_table) return
-                    const text = prompt("Paste tab-separated data:\nLine 1 = header (skiped)\nFollowing = data rows\nColumns: SampleName  FL1  FL2  ...  Comments")
+                    const text = prompt("Paste your data (supports comma, tab, or multi-space separated):\nLine 1 = header (skipped)\nFollowing = data rows\nColumns: SampleName, FL1, FL2, ..., Comments")
                     if (!text) return
 
                     const nCols = file.panel_table.columns.length
@@ -341,23 +355,47 @@
                     const lines = text.trim().split('\n')
                     if (lines.length < 2) return
 
+                    // Auto-detect the delimiter by counting occurrences in the first
+                    // data line. Supports comma (CSV), tab (TSV from Excel), and
+                    // 2+ consecutive spaces (copied tables). Falls back to tab.
+                    const detectDelimiter = (sample) => {
+                        const counts = {
+                            comma: (sample.match(/,/g) || []).length,
+                            tab: (sample.match(/\t/g) || []).length,
+                            spaces: (sample.match(/\s{2,}/g) || []).length,
+                        }
+                        if (counts.comma === 0 && counts.tab === 0 && counts.spaces === 0) return '\t'
+                        return ['comma', 'tab', 'spaces'].reduce((best, key) =>
+                            counts[key] > counts[best] ? key : best, 'tab')
+                    }
+
+                    const splitByDelimiter = (line, delim) => {
+                        if (delim === 'comma') return line.split(',')
+                        if (delim === 'spaces') return line.trim().split(/\s{2,}/)
+                        return line.split('\t')   // default: tab
+                    }
+
+                    // Detect from the first data row (line index 1), so a comma in
+                    // the header won't bias detection when data uses tabs.
+                    const delim = detectDelimiter((lines[1] || lines[0]).replace(/\r/g, ''))
+
                     // Skip header (line 0), parse data rows
                     for (let i = 1; i < lines.length; i++) {
                         // Clean \r characters from Word/Excel paste
                         const cleanLine = lines[i].replace(/\r/g, '')
                         if (!cleanLine.trim()) continue
 
-                        const parts = cleanLine.split('\t')
+                        const parts = splitByDelimiter(cleanLine, delim).map(p => p.trim())
                         if (parts.length < 1) continue
 
                         const row = ['', ...Array(nCols).fill(''), '']
-                        row[0] = (parts[0] || '').replace(/\r/g, '')  // Sample name
+                        row[0] = parts[0] || ''  // Sample name
                         for (let j = 1; j < parts.length && j <= nCols; j++) {
-                            row[j] = (parts[j] || '').replace(/\r/g, '')
+                            row[j] = parts[j] || ''
                         }
                         const commentIdx = 1 + nCols
                         if (parts.length > nCols + 1) {
-                            row[commentIdx] = parts.slice(nCols + 1).join(' ').replace(/\r/g, '')
+                            row[commentIdx] = parts.slice(nCols + 1).join(' ')
                         }
                         file.panel_table.rows.push(row)
                     }
